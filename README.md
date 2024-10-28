@@ -118,29 +118,46 @@ import ollama
 
 desiredModel = 'llama3.2:3b'
 
+# Custom operator function
 def prompt_operator(doc, args):
     field = args[0]
     prompt_text = args[1]
-    field_value = doc.get(field)
+    # Get the value from the document
+    field_name = field  # Field name without '$'
+    field_value = doc.get(field_name)
     if field_value is None:
         return None
-    # Prepare the message for the language model
-    message = f"""
+    # Call the LLM with the field value and prompt text
+    print(f"""
     [prompt]
     {prompt_text}
     [/prompt]
     [context]
-    field: {field}
+    field: {field_name}
     value:
     {str(field_value)}
     [full document]
     {str(doc)}
     [/full document]
     [/context]
-    """
-    # Call the language model
+    """,)
     response = ollama.chat(model=desiredModel, messages=[
-        {'role': 'user', 'content': message}
+        {
+            'role': 'user',
+            'content': f"""
+[prompt]
+{prompt_text}
+[/prompt]
+[context]
+field: {field_name}
+value:
+{str(field_value)}
+[full document]
+{str(doc)}
+[/full document]
+[/context]
+""",
+        },
     ])
     return response['message']['content']
 ```
