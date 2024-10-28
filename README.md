@@ -1,4 +1,4 @@
-![](https://webassets.mongodb.com/_com_assets/cms/Building-GenAI-With-AI-Partners_HEADER-zsjqg054de.png)
+![](mdb.png)
 
 # Extending MongoDB's Aggregation Framework with Custom Operators and Language Models
 
