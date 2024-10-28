@@ -1,73 +1,59 @@
-# custom-mdb-agg
+# Extending MongoDB's Aggregation Framework with Custom Operators and Language Models
 
-# **Extending MongoDB's Aggregation Framework with Custom Operators and Language Models**
-
-*Unlocking new possibilities in data processing and analysis*
+*Unlock new dimensions in data processing and analysis.*
 
 ---
 
 **Table of Contents**
 
 1. [Introduction](#introduction)
-2. [The Power of Extending the Aggregation Framework](#the-power-of-extending-the-aggregation-framework)
-3. [Understanding the Magic Behind Custom Operators](#understanding-the-magic-behind-custom-operators)
-4. [Implementing Custom Operators in MongoDB](#implementing-custom-operators-in-mongodb)
-    - [Setting Up the Dataset](#setting-up-the-dataset)
-    - [Creating the CustomMongoDB Class](#creating-the-custommongodb-class)
-    - [Defining the `$prompt` Operator](#defining-the-prompt-operator)
-    - [Constructing the Aggregation Pipeline](#constructing-the-aggregation-pipeline)
-5. [The Funky Stuff: How It All Works](#the-funky-stuff-how-it-all-works)
-6. [Leveraging MongoDB Magic for Quick Experimentation](#leveraging-mongodb-magic-for-quick-experimentation)
-7. [Comparing with SuperDuperDB and MindsDB](#comparing-with-superduperdb-and-mindsdb)
-8. [Real-World Use Cases](#real-world-use-cases)
-9. [Conclusion](#conclusion)
+2. [Motivation for Custom Operators](#motivation-for-custom-operators)
+3. [Understanding the Implementation](#understanding-the-implementation)
+   - [Setting Up the Dataset](#setting-up-the-dataset)
+   - [Creating the `CustomMongoDB` Class](#creating-the-custommongodb-class)
+   - [Defining the `$prompt` Operator](#defining-the-prompt-operator)
+   - [Constructing the Aggregation Pipeline](#constructing-the-aggregation-pipeline)
+4. [How It Works](#how-it-works)
+5. [Benefits of This Approach](#benefits-of-this-approach)
+6. [Comparing with MindsDB and SuperDuperDB](#comparing-with-mindsdb-and-superduperdb)
+7. [Conclusion](#conclusion)
 
 ---
 
-## **Introduction**
+## Introduction
 
-In the realm of data processing, MongoDB's aggregation framework stands out as a powerful tool for transforming and analyzing data directly within the database. But what if we could extend this framework even further? What if we could integrate advanced language models into our aggregation pipelines, allowing for dynamic text summarization, sentiment analysis, and more?
+MongoDB's aggregation framework is a powerful tool for data transformation and analysis. However, when dealing with advanced text processing or machine learning tasks, the built-in operators might not suffice. What if we could extend this framework to integrate advanced language models directly into our aggregation pipelines?
 
-In this blog post, we'll explore how to **extend MongoDB's aggregation framework** with custom operators that harness the power of language models. We'll dive into the implementation details, uncover the magic behind the scenes, and compare this approach with tools like **SuperDuperDB** and **MindsDB**.
-
----
-
-## **The Power of Extending the Aggregation Framework**
-
-The aggregation framework in MongoDB allows for sophisticated data manipulation and aggregation operations. By extending it with custom operators, we unlock a new level of flexibility:
-
-- **Custom Processing**: Perform operations tailored to specific application needs.
-- **Integration with Machine Learning**: Seamlessly incorporate language models and other ML tools.
-- **Enhanced Analytics**: Extract deeper insights from data, such as sentiments, summaries, and entities.
-- **Streamlined Workflows**: Keep data processing within the database, reducing the need for external tools.
+In this blog post, we'll explore how to **extend MongoDB's aggregation framework** by incorporating custom operators that leverage language models. This approach enables dynamic text summarization, sentiment analysis, and more—all within your MongoDB queries.
 
 ---
 
-## **Understanding the Magic Behind Custom Operators**
+## Motivation for Custom Operators
 
-At the heart of this extension lies the ability to define **custom aggregation operators**. These operators can be placed anywhere in the pipeline, allowing for flexible and powerful data transformations.
+While MongoDB provides a rich set of aggregation operators, there are scenarios where we need functionality beyond what's available:
 
-**Key Concepts:**
+- **Advanced Text Processing**: Tasks like summarization, sentiment analysis, and entity recognition.
+- **Machine Learning Integration**: Incorporating predictive models directly into data processing pipelines.
+- **Customized Operations**: Tailoring data transformations to specific business logic.
 
-- **Sub-Collections**: Temporary collections created during the pipeline execution to handle intermediate results.
-- **Custom Operator Functions**: User-defined functions that specify how custom operators process data.
-- **Pipeline Execution Flow**: The mechanism that identifies and processes stages containing custom operators.
+By introducing custom operators, we can:
 
-By leveraging these concepts, we can inject complex logic, such as language model interactions, directly into our aggregation pipelines.
+- **Enhance Functionality**: Perform complex operations without external processing.
+- **Simplify Architecture**: Reduce the need for additional systems or services.
+- **Increase Efficiency**: Process data where it resides, minimizing data movement.
+- **Maintain Full Control**: Customize every aspect of data processing to suit specific needs.
 
 ---
 
-## **Implementing Custom Operators in MongoDB**
+## Understanding the Implementation
 
-Let's walk through a practical example to see how this all comes together.
+Let's dive into how we can implement custom operators in MongoDB, specifically integrating a language model for text summarization and sentiment analysis.
 
-### **Setting Up the Dataset**
+### Setting Up the Dataset
 
-We'll use a sample dataset of movie reviews:
+We start with a sample dataset of movie reviews:
 
 ```python
-from pymongo import MongoClient
-
 DATASET = [
     {
         "_id": 1,
@@ -79,56 +65,396 @@ DATASET = [
     },
     # ... additional documents ...
 ]
-
-# Initialize MongoDB client and insert the dataset
-client = MongoClient("mongodb://localhost:27017/")
-db = client['mydatabase']
-collection = db['mycollection']
-collection.delete_many({})
-collection.insert_many(DATASET)
 ```
 
-### **Creating the CustomMongoDB Class**
+This dataset contains user reviews that we want to analyze using a language model.
 
-We create a `CustomMongoDB` class to handle custom operators within the aggregation pipeline:
+### Creating the `CustomMongoDB` Class
+
+We create a `CustomMongoDB` class to handle aggregation with custom operators:
 
 ```python
+from pymongo import MongoClient
 import uuid
 
 class CustomMongoDB:
-    def __init__(self, collection):
-        self.collection = collection
+    def __init__(self, uri, database, collection, temp_prefix='temp'):
+        self.client = MongoClient(uri)
+        self.db = self.client[database]
+        self.collection = self.db[collection]
+        # Initialize the collection with the dataset
+        self.collection.delete_many({})
+        self.collection.insert_many(DATASET)
         self.custom_operators = {}
-        self.temp_prefix = 'temp'
+        self.temp_prefix = temp_prefix
 
     def add_custom_operator(self, name, func):
+        """Add a custom operator to the collection."""
         self.custom_operators[name] = func
 
+    # ... other methods ...
+```
+
+**Key Methods:**
+
+- `add_custom_operator(name, func)`: Registers a custom operator.
+- `aggregate(pipeline)`: Processes the pipeline, handling both standard and custom operators.
+- `contains_custom_operator(stage)`: Checks if a pipeline stage contains any custom operators.
+- `execute_sub_pipeline(collection, pipeline)`: Executes standard pipeline stages.
+- `process_custom_stage(documents, stage)`: Processes stages with custom operators.
+
+### Defining the `$prompt` Operator
+
+We define a custom `$prompt` operator that interfaces with a language model:
+
+```python
+import ollama
+
+desiredModel = 'llama3.2:3b'
+
+def prompt_operator(doc, args):
+    field = args[0]
+    prompt_text = args[1]
+    field_value = doc.get(field)
+    if field_value is None:
+        return None
+    # Prepare the message for the language model
+    message = f"""
+    [prompt]
+    {prompt_text}
+    [/prompt]
+    [context]
+    field: {field}
+    value:
+    {str(field_value)}
+    [full document]
+    {str(doc)}
+    [/full document]
+    [/context]
+    """
+    # Call the language model
+    response = ollama.chat(model=desiredModel, messages=[
+        {'role': 'user', 'content': message}
+    ])
+    return response['message']['content']
+```
+
+This operator takes a field from the document and a prompt text, then generates a response using the language model.
+
+### Constructing the Aggregation Pipeline
+
+We build an aggregation pipeline that utilizes the custom `$prompt` operator:
+
+```python
+pipeline = [
+    {
+        '$match': {
+            'rating': {'$gt': 3},
+            'status': 'active'
+        }
+    },
+    {
+        '$project': {
+            'user': 1,
+            'movie': 1,
+            'rating': 1,
+            'comment': 1,
+            'summary': {
+                '$prompt': ['comment', 'Summarize the following movie comment in 5 words:']
+            },
+            'sentiment': {
+                '$prompt': ['comment', 'Respond with the sentiment for the following comment in exactly 1 word: "positive", "neutral", or "negative":']
+            }
+        }
+    },
+    {
+        '$sort': {'rating': -1}
+    }
+]
+```
+
+**Explanation:**
+
+- **`$match` Stage**: Filters active documents with a rating greater than 3.
+- **`$project` Stage**: Projects desired fields and uses `$prompt` to generate summaries and sentiments.
+- **`$sort` Stage**: Sorts the results by rating in descending order.
+
+---
+
+## How It Works
+
+Here's a step-by-step breakdown of the process:
+
+1. **Pipeline Processing**:
+   - The `aggregate` method processes each stage of the pipeline.
+   - Standard stages are executed normally.
+   - When a custom operator is detected, processing switches to handle it specifically.
+
+2. **Custom Operator Detection**:
+   - The method `contains_custom_operator` checks each stage for custom operators.
+
+3. **Handling Custom Operators**:
+   - Documents are fetched from the current collection.
+   - The custom operator function (`prompt_operator`) is applied to each document.
+   - Results are stored in a temporary collection to maintain pipeline flow.
+
+4. **Continuation of Pipeline**:
+   - The pipeline resumes with the temporary collection as the new data source.
+   - Subsequent stages are processed accordingly.
+
+5. **Cleanup**:
+   - Temporary collections are deleted after the aggregation to free up resources.
+
+---
+
+## Benefits of This Approach
+
+- **Seamless Integration**: Custom operators can be used alongside standard aggregation operators.
+- **Flexibility**: Place custom operators anywhere in the pipeline.
+- **Performance**: Reduce data transfer by processing within the database.
+- **Maintainability**: Keep data processing logic in one place, simplifying updates and debugging.
+- **Complete Control**: Customize every aspect of data processing, from operator definitions to pipeline execution.
+
+---
+
+## Comparing with MindsDB and SuperDuperDB
+
+**MindsDB** and **SuperDuperDB** are powerful tools that integrate machine learning models directly into databases, including MongoDB. They offer out-of-the-box solutions for incorporating AI into your data workflows. However, there are key differences when compared to our custom aggregation implementation.
+
+### Flexibility and Control
+
+- **Custom Implementation**:
+  - **Full Control**: You define exactly how and where the language models are integrated.
+  - **Custom Operators**: Tailor-made functions that suit your specific use cases.
+  - **No Dependencies**: Minimal reliance on external libraries or frameworks beyond what's necessary.
+- **MindsDB/SuperDuperDB**:
+  - **Predefined Integrations**: Comes with built-in functionalities that may not cover all unique needs.
+  - **Abstraction Layers**: Higher-level interfaces that might limit fine-grained control.
+
+### Integration Complexity
+
+- **Custom Implementation**:
+  - **Simplified Architecture**: Directly integrate into existing MongoDB setups.
+  - **Learning Curve**: Requires understanding of MongoDB's internals and custom operator creation.
+- **MindsDB/SuperDuperDB**:
+  - **Additional Layers**: Introduce new components into your architecture.
+  - **Ease of Use**: Designed to be user-friendly with less need for in-depth coding.
+
+### Performance Considerations
+
+- **Custom Implementation**:
+  - **Optimized for Specific Tasks**: Since you control the implementation, you can optimize for performance.
+  - **Resource Management**: Direct oversight of how resources are utilized.
+- **MindsDB/SuperDuperDB**:
+  - **General-Purpose Solutions**: May not be optimized for all specific scenarios.
+  - **Overhead**: Additional layers might introduce performance overhead.
+
+### Use Cases
+
+- **When to Use Custom Implementation**:
+  - **Specific Requirements**: Your project has unique needs not met by existing tools.
+  - **Full Control Needed**: You want complete oversight of the data processing pipeline.
+  - **Customization**: You need to implement custom logic or integrate specialized models.
+
+- **When to Use MindsDB/SuperDuperDB**:
+  - **Standard Use Cases**: Common machine learning tasks like forecasting, classification, etc.
+  - **Quick Setup**: You prefer rapid integration without delving into custom code.
+  - **Support and Community**: Benefit from the support and community around these platforms.
+
+---
+
+## Conclusion
+
+Extending MongoDB's aggregation framework with custom operators and language models unlocks a world of possibilities. By integrating advanced processing directly into your database queries, you can:
+
+- **Enhance Data Insights**: Extract meaningful information from unstructured data.
+- **Streamline Workflows**: Reduce complexity by keeping data processing within the database.
+- **Accelerate Innovation**: Quickly prototype and deploy new data processing techniques.
+- **Maintain Flexibility and Control**: Customize operators and pipelines to suit your specific needs.
+
+While tools like MindsDB and SuperDuperDB offer powerful features and ease of use, building a custom implementation provides unparalleled control and flexibility. You can tailor every aspect of the data processing pipeline, ensuring it fits perfectly with your application's requirements.
+
+As we stand at the intersection of data management and artificial intelligence, the boundaries of what's possible are expanding. This fusion challenges us to rethink our approach to data—not just as static information but as a dynamic entity capable of providing deep insights.
+
+**What if your database could not only store data but also understand and interpret it?**
+
+By pushing the limits of MongoDB's aggregation framework, we're venturing into a realm where data processing becomes more intuitive, intelligent, and integrated. This approach invites us to explore uncharted territories, question traditional methods, and innovate beyond conventional boundaries.
+
+The journey doesn't end here. It's an open-ended adventure filled with opportunities to experiment, create, and redefine the way we interact with data. The tools are in our hands, and the potential is vast.
+
+**So, will you take the leap?**
+
+---
+
+*Embrace the challenge. Push the boundaries. Let's shape the future together.*
+
+---
+
+## FULL CODE
+
+```python
+from pymongo import MongoClient
+import ollama
+import uuid
+
+desiredModel = 'llama3.2:3b'
+
+DATASET = [
+    {
+        "_id": 1,
+        "user": "Alice",
+        "movie": "Inception",
+        "rating": 5,
+        "comment": "This movie is absolutely amazing! The plot twists and turns in ways you would never expect. Truly a masterpiece.",
+        "status": "active"
+    },
+    {
+        "_id": 2,
+        "user": "Bob",
+        "movie": "The Matrix",
+        "rating": 4,
+        "comment": "The Matrix offers great visuals. The special effects are truly groundbreaking, making it a visual feast.",
+        "status": "active"
+    },
+    {
+        "_id": 3,
+        "user": "Charlie",
+        "movie": "Interstellar",
+        "rating": 5,
+        "comment": "Interstellar is a mind-blowing experience! The scientific concepts are intriguing and the storyline is deeply moving.",
+        "status": "inactive"
+    },
+    {
+        "_id": 4,
+        "user": "Diana",
+        "movie": "Inception",
+        "rating": 4,
+        "comment": "Inception is a good movie, but it can be quite confusing. The plot is complex and requires your full attention.",
+        "status": "active"
+    },
+    {
+        "_id": 5,
+        "user": "Eve",
+        "movie": "The Matrix Reloaded",
+        "rating": 2,
+        "comment": "The Matrix Reloaded didn't quite live up to the first one. It lacked the originality and depth of its predecessor.",
+        "status": "inactive"
+    },
+    {
+        "_id": 6,
+        "user": "Frank",
+        "movie": "Inception",
+        "rating": 5,
+        "comment": "Inception is a true masterpiece of modern cinema. The storytelling is innovative and the cinematography is stunning.",
+        "status": "active"
+    },
+    {
+        "_id": 7,
+        "user": "Grace",
+        "movie": "Inception",
+        "rating": 4,
+        "comment": "Inception boasts an intricate plot and stunning visual effects. It's a cinematic journey like no other.",
+        "status": "active"
+    },
+    {
+        "_id": 8,
+        "user": "Heidi",
+        "movie": "The Godfather",
+        "rating": 5,
+        "comment": "The Godfather is an all-time classic. The storytelling is compelling and the characters are unforgettable.",
+        "status": "active"
+    },
+    {
+        "_id": 9,
+        "user": "Ivan",
+        "movie": "Inception",
+        "rating": 4,
+        "comment": "Inception is a thrilling ride. It keeps you on the edge of your seat from start to finish.",
+        "status": "active"
+    },
+    {
+        "_id": 10,
+        "user": "Judy",
+        "movie": "Inception",
+        "rating": 3,
+        "comment": "Inception offers exceptional storytelling and visuals, but the plot can be a bit hard to follow at times.",
+        "status": "active"
+    },
+]
+
+class CustomMongoDB:
+    def __init__(self, uri, database, collection, temp_prefix='temp'):
+        self.client = MongoClient(uri)
+        self.db = self.client[database]
+        self.collection = self.db[collection]
+        self.collection.delete_many({})
+        self.collection.insert_many(DATASET)
+        self.custom_operators = {}
+        self.temp_prefix = temp_prefix
+
+    def add_custom_operator(self, name, func):
+        """Add a custom operator to the collection."""
+        self.custom_operators[name] = func
+
+    def remove_custom_operator(self, name):
+        """Remove a custom operator from the collection."""
+        if name in self.custom_operators:
+            del self.custom_operators[name]
+
+    def contains_custom_operator(self, stage):
+        """Check if a pipeline stage contains any custom operators."""
+        def check_expr(expr):
+            if isinstance(expr, dict):
+                for key, value in expr.items():
+                    if key in self.custom_operators:
+                        return True
+                    elif isinstance(value, (dict, list)):
+                        if check_expr(value):
+                            return True
+            elif isinstance(expr, list):
+                for item in expr:
+                    if check_expr(item):
+                        return True
+            return False
+        return check_expr(stage)
+
     def aggregate(self, pipeline):
+        """Execute an aggregation pipeline with custom operators processed where needed."""
         current_collection = self.collection
         temp_collections = []
-        sub_pipeline = []
 
-        for stage in pipeline:
+        pipeline_iter = iter(pipeline)
+        sub_pipeline = []
+        for stage in pipeline_iter:
             if not self.contains_custom_operator(stage):
                 sub_pipeline.append(stage)
             else:
+                # Execute the accumulated sub_pipeline in MongoDB
                 if sub_pipeline:
                     current_collection = self.execute_sub_pipeline(current_collection, sub_pipeline)
                     sub_pipeline = []
                     temp_collections.append(current_collection)
+
+                # Process the custom stage
+                # Fetch the documents
                 documents = list(current_collection.find())
+
+                # Process the custom stage per document
                 documents = self.process_custom_stage(documents, stage)
+
+                # Write the documents to a new temporary collection
                 temp_collection_name = f"{self.temp_prefix}_{uuid.uuid4().hex}"
-                temp_collection = self.collection.database[temp_collection_name]
+                temp_collection = self.db[temp_collection_name]
                 temp_collection.insert_many(documents)
                 current_collection = temp_collection
                 temp_collections.append(current_collection)
 
+        # After processing all stages, if sub_pipeline is not empty, execute it
         if sub_pipeline:
             current_collection = self.execute_sub_pipeline(current_collection, sub_pipeline)
             temp_collections.append(current_collection)
 
+        # Fetch the final results
         results = list(current_collection.find())
 
         # Clean up temporary collections
@@ -138,22 +464,74 @@ class CustomMongoDB:
 
         return results
 
-    # Additional methods for operator handling...
-```
+    def execute_sub_pipeline(self, collection, pipeline):
+        """Execute a sub-pipeline on the given collection."""
+        temp_collection_name = f"temp_{uuid.uuid4().hex}"
+        temp_collection = self.db[temp_collection_name]
+        pipeline_with_out = pipeline + [{'$out': temp_collection_name}]
+        collection.aggregate(pipeline_with_out)
+        return temp_collection
 
-**Key Methods:**
+    def process_custom_stage(self, documents, stage):
+        """Process a custom stage per document."""
+        # We assume the stage is a dict with a single key
+        operator, expr = next(iter(stage.items()))
+        if operator == '$project':
+            processed_docs = []
+            for doc in documents:
+                new_doc = {'_id': doc['_id']}
+                for key, value in expr.items():
+                    if isinstance(value, int) and value == 1:
+                        new_doc[key] = doc.get(key)
+                    else:
+                        new_doc[key] = self.process_expr(value, doc)
+                processed_docs.append(new_doc)
+            return processed_docs
+        else:
+            raise NotImplementedError(f"Custom processing for operator {operator} is not implemented.")
 
-- `add_custom_operator`: Registers a custom operator.
-- `aggregate`: Processes the pipeline, handling both standard and custom operators.
-- `contains_custom_operator`: Checks if a pipeline stage contains any custom operators.
-- `execute_sub_pipeline`: Executes standard pipeline stages on the current collection.
-- `process_custom_stage`: Processes stages with custom operators.
+    def process_expr(self, expr, doc):
+        """Recursively process an expression within a document context."""
+        if isinstance(expr, dict):
+            if len(expr) == 1:
+                key, value = next(iter(expr.items()))
+                if key in self.custom_operators:
+                    return self.custom_operators[key](doc, value)
+                elif key.startswith('$'):
+                    return self.evaluate_operator(key, value, doc)
+                else:
+                    return {key: self.process_expr(value, doc)}
+            else:
+                return {k: self.process_expr(v, doc) for k, v in expr.items()}
+        elif isinstance(expr, list):
+            return [self.process_expr(item, doc) for item in expr]
+        elif isinstance(expr, str) and expr.startswith('$'):
+            return self.get_field_value(doc, expr[1:])
+        else:
+            return expr
 
-### **Defining the `$prompt` Operator**
+    def evaluate_operator(self, operator, value, doc):
+        """Evaluate standard MongoDB operators."""
+        if operator == '$concat':
+            parts = self.process_expr(value, doc)
+            return ''.join(str(part) for part in parts)
+        elif operator == '$strLenCP':
+            string = self.process_expr(value, doc)
+            return len(string)
+        else:
+            raise NotImplementedError(f"Operator {operator} not implemented.")
 
-We define a custom `$prompt` operator to interact with a language model:
+    def get_field_value(self, doc, field_path):
+        """Retrieve the value of a field from the document given a field path."""
+        fields = field_path.split('.')
+        value = doc
+        for f in fields:
+            if isinstance(value, dict) and f in value:
+                value = value[f]
+            else:
+                return None
+        return value
 
-```python
 # Custom operator function
 def prompt_operator(doc, args):
     field = args[0]
@@ -196,179 +574,109 @@ value:
         },
     ])
     return response['message']['content']
-```
 
-**Assumptions:**
+if __name__ == "__main__":
+    # Initialize the CustomMongoDB class
+    mongo_db = CustomMongoDB("mongodb://localhost:27017/?directConnection=true", "mydatabase", "mycollection")
 
-- `language_model.generate(prompt)` is a placeholder for the actual language model interaction.
-- You can use models like OpenAI's GPT-3, Hugging Face models, or any other suitable language model.
+    # Add the custom operator
+    mongo_db.add_custom_operator('$prompt', prompt_operator)
 
-### **Constructing the Aggregation Pipeline**
-
-We build an aggregation pipeline that utilizes our custom operator:
-
-```python
-pipeline = [
-    {
-        '$match': {
-            'rating': {'$gte': 4},
-            'status': 'active'
-        }
-    },
-    {
-        '$project': {
-            'user': 1,
-            'movie': 1,
-            'rating': 1,
-            'comment': 1,
-            'summary': {
-                '$prompt': ['comment', 'Provide a brief summary of this review:']
-            },
-            'sentiment': {
-                '$prompt': ['comment', 'What is the sentiment of this review (positive, neutral, negative)?']
+    # Define the aggregation pipeline using the custom operator anywhere
+    pipeline = [
+        {
+            '$match': {
+                'rating': {'$gt': 3},
+                'status': 'active'
             }
+        },
+        {
+            '$project': {
+                'user': 1,
+                'movie': 1,
+                'rating': 1,
+                'comment': 1,
+                'summary': {
+                    '$prompt': ['comment', 'Summarize the following movie comment in 5 words:']
+                },
+                'sentiment': {
+                    '$prompt': ['comment', 'Respond with the sentiment for the following comment in exactly 1 word:`"positive"` or `"neutral"` or `"negative"`:']
+                }
+            }
+        },
+        {
+            '$sort': {'rating': -1}
         }
-    },
-    {
-        '$sort': {'rating': -1}
-    }
-]
+    ]
+
+    # Apply the custom operator
+    output = mongo_db.aggregate(pipeline)
+
+    # Print the results
+    for doc in output:
+        print(f"\nDocument ID {doc.get('_id')}:")
+        print(f"User: {doc.get('user')}")
+        print(f"Movie: {doc.get('movie')}")
+        print(f"Rating: {doc.get('rating')}")
+        print(f"Comment: {doc.get('comment')}")
+        print(f"Summary: {doc.get('summary')}")
+        print(f"Sentiment: {doc.get('sentiment')}")
+
+"""
+Document ID 1:
+User: Alice
+Movie: Inception
+Rating: 5
+Comment: This movie is absolutely amazing! The plot twists and turns in ways you would never expect. Truly a masterpiece.
+Summary: "Inception is an amazing masterpiece."
+Sentiment: positive
+
+Document ID 6:
+User: Frank
+Movie: Inception
+Rating: 5
+Comment: Inception is a true masterpiece of modern cinema. The storytelling is innovative and the cinematography is stunning.
+Summary: Praises Inception as a masterpiece.
+Sentiment: positive
+
+Document ID 8:
+User: Heidi
+Movie: The Godfather
+Rating: 5
+Comment: The Godfather is an all-time classic. The storytelling is compelling and the characters are unforgettable.
+Summary: Classic film with memorable characters.
+Sentiment: positive
+
+Document ID 2:
+User: Bob
+Movie: The Matrix
+Rating: 4
+Comment: The Matrix offers great visuals. The special effects are truly groundbreaking, making it a visual feast.
+Summary: Visually stunning sci-fi movie experience.
+Sentiment: positive
+
+Document ID 4:
+User: Diana
+Movie: Inception
+Rating: 4
+Comment: Inception is a good movie, but it can be quite confusing. The plot is complex and requires your full attention.
+Summary: Confusing but good mental puzzle film.
+Sentiment: neutral
+
+Document ID 7:
+User: Grace
+Movie: Inception
+Rating: 4
+Comment: Inception boasts an intricate plot and stunning visual effects. It's a cinematic journey like no other.
+Summary: "Intricate plot with impressive visuals."
+Sentiment: positive
+
+Document ID 9:
+User: Ivan
+Movie: Inception
+Rating: 4
+Comment: Inception is a thrilling ride. It keeps you on the edge of your seat from start to finish.
+Summary: Thrilling and suspenseful action film.
+Sentiment: positive
+"""
 ```
-
-**Explanation:**
-
-- **`$match` Stage**: Filters documents with active status and ratings of 4 or higher.
-- **`$project` Stage**: Projects desired fields and uses `$prompt` to generate summaries and sentiments.
-- **`$sort` Stage**: Sorts the results by rating in descending order.
-
----
-
-## **The Funky Stuff: How It All Works**
-
-Let's uncover the magic happening behind the scenes:
-
-1. **Pipeline Processing**:
-   - The `aggregate` method processes the pipeline stages.
-   - Standard stages are executed using MongoDB's aggregation framework.
-   - When a custom operator is encountered, the pipeline execution pauses.
-
-2. **Handling Custom Operators**:
-   - The current documents are fetched from the collection.
-   - The custom operator function (`prompt_operator`) processes each document.
-   - Results are stored in a temporary sub-collection.
-
-3. **Sub-Collections**:
-   - Sub-collections are used to store intermediate results after custom processing.
-   - This approach allows the pipeline to continue processing as if it were operating on a standard collection.
-   - Temporary collections are cleaned up after the aggregation completes.
-
-4. **Seamless Integration**:
-   - The combination of standard and custom stages works seamlessly.
-   - Users can position custom operators anywhere in the pipeline for maximum flexibility.
-
----
-
-## **Leveraging MongoDB Magic for Quick Experimentation**
-
-By extending the aggregation framework, we leverage MongoDB's strengths:
-
-- **Powerful Querying**: Utilize rich query capabilities to filter and manipulate data.
-- **Aggregation Operators**: Combine standard operators with custom ones for complex transformations.
-- **Schema Flexibility**: MongoDB's document model adapts to new fields added by custom operators.
-- **Performance**: Keep data processing close to the data, reducing latency and overhead.
-
-**Rapid Experimentation**:
-
-- **Adjust On-the-Fly**: Modify custom operators and pipeline stages without altering the underlying data model.
-- **Test New Ideas**: Quickly prototype and test new data processing techniques.
-- **Scalable Solutions**: Apply these concepts to large datasets with minimal changes.
-
----
-
-## **Comparing with SuperDuperDB and MindsDB**
-
-**SuperDuperDB** and **MindsDB** are tools that integrate machine learning models directly into databases. Here's how our approach compares:
-
-### **Similarities**
-
-- **Integrated ML Capabilities**: All approaches bring machine learning into the database layer.
-- **Enhanced Functionality**: Enable advanced data processing tasks like predictions and natural language understanding.
-
-### **Differences**
-
-- **Flexibility with Custom Operators**:
-  - Our method allows for custom operators that can be defined and modified as needed.
-  - SuperDuperDB and MindsDB may have predefined integrations that might be less flexible.
-
-- **Control Over Execution Flow**:
-  - By handling the aggregation pipeline ourselves, we have granular control over how and when custom processing occurs.
-  - This can be advantageous for complex or specialized use cases.
-
-- **Simplicity and Lightweight Integration**:
-  - Our approach doesn't require additional layers or dependencies beyond what's necessary for the language model.
-  - SuperDuperDB and MindsDB may introduce additional complexity.
-
-**When to Use Each Approach**:
-
-- **Custom Operators in MongoDB**:
-  - Ideal for developers who want full control and flexibility.
-  - Suitable for rapid experimentation and bespoke solutions.
-
-- **SuperDuperDB/MindsDB**:
-  - Better for out-of-the-box solutions with built-in integrations.
-  - Useful when standard ML tasks suffice, and ease of use is a priority.
-
----
-
-## **Real-World Use Cases**
-
-### **1. E-commerce Product Reviews**
-
-- **Challenge**: Summarize customer reviews and analyze sentiments to improve products.
-- **Solution**: Use custom operators to generate summaries and sentiment scores directly within MongoDB.
-- **Benefit**: Real-time insights without the need for external processing pipelines.
-
-### **2. Social Media Monitoring**
-
-- **Challenge**: Monitor and analyze user-generated content for trends and public opinion.
-- **Solution**: Integrate language models to classify topics and sentiments in posts.
-- **Benefit**: Stay ahead of trends and manage brand reputation effectively.
-
-### **3. Customer Support Automation**
-
-- **Challenge**: Triage support tickets and prioritize critical issues.
-- **Solution**: Automatically analyze ticket content to determine urgency and assign categories.
-- **Benefit**: Improve response times and customer satisfaction.
-
-### **4. Content Personalization**
-
-- **Challenge**: Deliver personalized content recommendations to users.
-- **Solution**: Analyze user interactions and preferences using language models.
-- **Benefit**: Enhance user engagement and retention.
-
----
-
-## **Conclusion**
-
-Extending MongoDB's aggregation framework with custom operators and language models opens up a world of possibilities. By integrating advanced processing directly into your database queries, you can:
-
-- **Enhance Data Insights**: Extract meaningful information from unstructured data.
-- **Streamline Workflows**: Reduce complexity by keeping data processing within the database.
-- **Accelerate Innovation**: Quickly prototype and deploy new data processing techniques.
-- **Maintain Flexibility**: Customize operators and pipelines to suit your specific needs.
-
-As we stand at the intersection of data management and artificial intelligence, the boundaries of what's possible are expanding. This fusion challenges us to rethink our approach to data—not just as static information but as a living, breathing entity capable of providing deep insights.
-
-**What if your database could not only store data but also understand and interpret it?**
-
-By pushing the limits of MongoDB's aggregation framework, we're venturing into a realm where data processing becomes more intuitive, intelligent, and integrated. This approach invites us to explore uncharted territories, to question traditional methods, and to innovate beyond conventional boundaries.
-
-The journey doesn't end here. It's an open-ended adventure filled with opportunities to experiment, to create, and to redefine the way we interact with data. The tools are in our hands, and the potential is vast.
-
-**So, will you take the leap?**
-
----
-
-*Embrace the challenge. Push the boundaries. Let's shape the future together.*
-
----
