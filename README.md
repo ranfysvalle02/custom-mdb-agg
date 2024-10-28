@@ -452,16 +452,7 @@ When integrating custom operators and external services like LLMs into your data
   - **Encryption**: Use encryption for sensitive data stored in databases or files.
   - **Access Controls**: Restrict access to sensitive data based on roles and responsibilities.
 
-### **Summary**
-
 Incorporating security best practices is essential when integrating custom operators and external services into your data processing pipelines. By addressing the considerations outlined above, you can enhance the security posture of your application, protect user data, and ensure compliance with relevant regulations.
-
-**Recommendations**:
-
-- **Perform a Security Audit**: Assess your application to identify and mitigate security risks.
-- **Stay Updated**: Keep dependencies and libraries up to date to avoid known vulnerabilities.
-- **Educate Developers**: Ensure that developers are aware of security best practices and potential risks.
-- **Implement Policies**: Establish and enforce security policies within your organization.
 
 ---
 
