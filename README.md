@@ -49,6 +49,8 @@ By introducing custom operators, we can:
 
 ---
 
+![](https://cdn.ttgtmedia.com/rms/onlineimages/ai_a199952058.jpg)
+
 ## Understanding the Implementation
 
 Let's dive into how we can implement custom operators in MongoDB, specifically integrating a language model for text summarization and sentiment analysis.
