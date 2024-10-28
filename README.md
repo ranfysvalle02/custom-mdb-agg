@@ -6,6 +6,10 @@
 
 ---
 
+*inspired by https://github.com/ranfysvalle02/prompt-dolla*
+
+---
+
 **Table of Contents**
 
 1. [Introduction](#introduction)
