@@ -154,16 +154,48 @@ class CustomMongoDB:
 We define a custom `$prompt` operator to interact with a language model:
 
 ```python
+# Custom operator function
 def prompt_operator(doc, args):
-    field_name, prompt_text = args
+    field = args[0]
+    prompt_text = args[1]
+    # Get the value from the document
+    field_name = field  # Field name without '$'
     field_value = doc.get(field_name)
     if field_value is None:
         return None
-    # Prepare the prompt
-    prompt = f"{prompt_text}\n\n{field_value}"
-    # Interact with the language model
-    response = language_model.generate(prompt)
-    return response
+    # Call the LLM with the field value and prompt text
+    print(f"""
+    [prompt]
+    {prompt_text}
+    [/prompt]
+    [context]
+    field: {field_name}
+    value:
+    {str(field_value)}
+    [full document]
+    {str(doc)}
+    [/full document]
+    [/context]
+    """,)
+    response = ollama.chat(model=desiredModel, messages=[
+        {
+            'role': 'user',
+            'content': f"""
+[prompt]
+{prompt_text}
+[/prompt]
+[context]
+field: {field_name}
+value:
+{str(field_value)}
+[full document]
+{str(doc)}
+[/full document]
+[/context]
+""",
+        },
+    ])
+    return response['message']['content']
 ```
 
 **Assumptions:**
