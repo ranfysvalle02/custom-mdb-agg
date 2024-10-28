@@ -22,6 +22,8 @@
 
 ---
 
+![](https://i.sstatic.net/S555v.png)
+
 ## Introduction
 
 MongoDB's aggregation framework is a powerful tool for data transformation and analysis. However, when dealing with advanced text processing or machine learning tasks, the built-in operators might not suffice. What if we could extend this framework to integrate advanced language models directly into our aggregation pipelines?
