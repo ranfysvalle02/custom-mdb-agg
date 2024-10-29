@@ -364,13 +364,6 @@ When integrating custom operators and external services like LLMs into your data
   - **Input Validation**: Sanitize and validate input data before including it in prompts.
   - **Prompt Design**: Design prompts to minimize the impact of injected content, possibly by setting strict formatting or using placeholders.
 
-#### **Code Injection**
-
-- **Issue**: If the LLM service interprets the input in an unintended way, it could lead to execution of unintended commands.
-- **Consideration**:
-  - **Escape Characters**: Properly handle escape characters and control sequences in the input data.
-  - **Content Filtering**: Implement content filtering to remove or encode potentially harmful content.
-
 ### 4. **Denial of Service (DoS)**
 
 #### **Resource Exhaustion**
@@ -390,13 +383,6 @@ When integrating custom operators and external services like LLMs into your data
   - **Log Sanitization**: Exclude or mask sensitive data in logs.
   - **Secure Log Storage**: Ensure logs are stored securely with proper access controls.
 
-#### **Anomaly Detection**
-
-- **Issue**: Unusual activity might indicate security incidents.
-- **Consideration**:
-  - **Monitoring**: Implement monitoring to detect unusual patterns, such as spikes in LLM usage or unexpected data access.
-  - **Alerts**: Set up alerts for potential security incidents.
-
 ### 6. **Configuration Management**
 
 #### **Environment Variables and Secrets**
@@ -414,13 +400,6 @@ When integrating custom operators and external services like LLMs into your data
 - **Consideration**:
   - **Service Location**: Ensure that the LLM service complies with data residency laws applicable to your data.
   - **Agreements**: Review service agreements for compliance with legal obligations.
-
-#### **Third-Party Service Policies**
-
-- **Issue**: The use of third-party services may impose certain obligations.
-- **Consideration**:
-  - **Terms of Service**: Review and comply with the LLM service's terms of service and privacy policies.
-  - **Data Usage**: Understand how the LLM service uses and stores your data.
 
 ### 8. **Secure Coding Practices**
 
