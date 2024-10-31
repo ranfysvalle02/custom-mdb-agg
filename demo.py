@@ -1,5 +1,3 @@
-# example_usage.py
-
 import logging
 from custom_mdb_agg.aggregator import CustomMongoAggregator
 from custom_mdb_agg.operators import prompt_operator
