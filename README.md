@@ -6,7 +6,7 @@
 
 ---
 
-*inspired by https://github.com/ranfysvalle02/prompt-dolla*
+*Inspired by [prompt-dolla](https://github.com/ranfysvalle02/prompt-dolla)*
 
 ---
 
@@ -16,13 +16,15 @@
 2. [Motivation for Custom Operators](#motivation-for-custom-operators)
 3. [Understanding the Implementation](#understanding-the-implementation)
    - [Setting Up the Dataset](#setting-up-the-dataset)
-   - [Creating the `CustomMongoDB` Class](#creating-the-custommongodb-class)
+   - [Initializing the `CustomMongoAggregator` Class](#initializing-the-custommongoaggregator-class)
    - [Defining the `$prompt` Operator](#defining-the-prompt-operator)
    - [Constructing the Aggregation Pipeline](#constructing-the-aggregation-pipeline)
+   - [Executing the Pipeline](#executing-the-pipeline)
 4. [How It Works](#how-it-works)
 5. [Benefits of This Approach](#benefits-of-this-approach)
 6. [Comparing with MindsDB and SuperDuperDB](#comparing-with-mindsdb-and-superduperdb)
 7. [Conclusion](#conclusion)
+8. [Appendix: Security Considerations](#appendix-security-considerations)
 
 ---
 
@@ -61,9 +63,27 @@ Let's dive into how we can implement custom operators in MongoDB, specifically i
 
 ### Setting Up the Dataset
 
-We start with a sample dataset of movie reviews:
+We start by setting up a sample dataset of movie reviews and inserting it into our MongoDB collection:
 
 ```python
+import logging
+from custom_mdb_agg.aggregator import CustomMongoAggregator
+from custom_mdb_agg.operators import prompt_operator
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+# Initialize the CustomMongoAggregator class
+mongo_db = CustomMongoAggregator(
+    uri="mongodb://localhost:27017/?directConnection=true",
+    database="mydatabase",
+    collection="mycollection"
+)
+
+# Clear existing data
+mongo_db.client["mydatabase"]["mycollection"].delete_many({})
+
+# Define the dataset
 DATASET = [
     {
         "_id": 1,
@@ -73,106 +93,126 @@ DATASET = [
         "comment": "This movie is absolutely amazing! The plot twists and turns in ways you would never expect. Truly a masterpiece.",
         "status": "active"
     },
-    # ... additional documents ...
+    {
+        "_id": 2,
+        "user": "Bob",
+        "movie": "The Matrix",
+        "rating": 4,
+        "comment": "The Matrix offers great visuals. The special effects are truly groundbreaking, making it a visual feast.",
+        "status": "active"
+    },
+    {
+        "_id": 3,
+        "user": "Charlie",
+        "movie": "Interstellar",
+        "rating": 5,
+        "comment": "Interstellar is a mind-blowing experience! The scientific concepts are intriguing and the storyline is deeply moving.",
+        "status": "inactive"
+    },
+    {
+        "_id": 4,
+        "user": "Diana",
+        "movie": "Inception",
+        "rating": 4,
+        "comment": "Inception is a good movie, but it can be quite confusing. The plot is complex and requires your full attention.",
+        "status": "active"
+    },
+    {
+        "_id": 5,
+        "user": "Eve",
+        "movie": "The Matrix Reloaded",
+        "rating": 2,
+        "comment": "The Matrix Reloaded didn't quite live up to the first one. It lacked the originality and depth of its predecessor.",
+        "status": "inactive"
+    },
+    {
+        "_id": 6,
+        "user": "Frank",
+        "movie": "Inception",
+        "rating": 5,
+        "comment": "Inception is a true masterpiece of modern cinema. The storytelling is innovative and the cinematography is stunning.",
+        "status": "active"
+    },
+    {
+        "_id": 7,
+        "user": "Grace",
+        "movie": "Inception",
+        "rating": 4,
+        "comment": "Inception boasts an intricate plot and stunning visual effects. It's a cinematic journey like no other.",
+        "status": "active"
+    },
+    {
+        "_id": 8,
+        "user": "Heidi",
+        "movie": "The Godfather",
+        "rating": 5,
+        "comment": "The Godfather is an all-time classic. The storytelling is compelling and the characters are unforgettable.",
+        "status": "active"
+    },
+    {
+        "_id": 9,
+        "user": "Ivan",
+        "movie": "Inception",
+        "rating": 4,
+        "comment": "Inception is a thrilling ride. It keeps you on the edge of your seat from start to finish.",
+        "status": "active"
+    },
+    {
+        "_id": 10,
+        "user": "Judy",
+        "movie": "Inception",
+        "rating": 3,
+        "comment": "Inception offers exceptional storytelling and visuals, but the plot can be a bit hard to follow at times.",
+        "status": "active"
+    },
 ]
+
+# Insert the dataset
+mongo_db.client["mydatabase"]["mycollection"].insert_many(DATASET)
 ```
 
-This dataset contains user reviews that we want to analyze using a language model.
+This code:
 
-### Creating the `CustomMongoDB` Class
+- Imports necessary modules and classes.
+- Configures logging.
+- Initializes the `CustomMongoAggregator`.
+- Clears any existing data in the collection.
+- Inserts the dataset into MongoDB.
 
-We create a `CustomMongoDB` class to handle aggregation with custom operators:
+### Initializing the `CustomMongoAggregator` Class
 
-```python
-from pymongo import MongoClient
-import uuid
+The `CustomMongoAggregator` class is part of the `custom_mdb_agg` package, which extends MongoDB's aggregation framework to support custom operators. It handles:
 
-class CustomMongoDB:
-    def __init__(self, uri, database, collection, temp_prefix='temp'):
-        self.client = MongoClient(uri)
-        self.db = self.client[database]
-        self.collection = self.db[collection]
-        # Initialize the collection with the dataset
-        self.collection.delete_many({})
-        self.collection.insert_many(DATASET)
-        self.custom_operators = {}
-        self.temp_prefix = temp_prefix
+- **Custom Operator Registration**: Allows you to add or remove custom operators.
+- **Aggregation Processing**: Executes the aggregation pipeline, handling both standard and custom operators.
+- **Temporary Collections**: Manages temporary collections created during the aggregation process.
 
-    def add_custom_operator(self, name, func):
-        """Add a custom operator to the collection."""
-        self.custom_operators[name] = func
-
-    # ... other methods ...
-```
-
-**Key Methods:**
-
-- `add_custom_operator(name, func)`: Registers a custom operator.
-- `aggregate(pipeline)`: Processes the pipeline, handling both standard and custom operators.
-- `contains_custom_operator(stage)`: Checks if a pipeline stage contains any custom operators.
-- `execute_sub_pipeline(collection, pipeline)`: Executes standard pipeline stages.
-- `process_custom_stage(documents, stage)`: Processes stages with custom operators.
+**Note**: The full implementation of `CustomMongoAggregator` can be found in the `custom_mdb_agg` package.
 
 ### Defining the `$prompt` Operator
 
 We define a custom `$prompt` operator that interfaces with a language model:
 
 ```python
-import ollama
+from custom_mdb_agg.operators import prompt_operator
 
-desiredModel = 'llama3.2:3b'
-
-# Custom operator function
-def prompt_operator(doc, args):
-    field = args[0]
-    prompt_text = args[1]
-    # Get the value from the document
-    field_name = field  # Field name without '$'
-    field_value = doc.get(field_name)
-    if field_value is None:
-        return None
-    # Call the LLM with the field value and prompt text
-    print(f"""
-    [prompt]
-    {prompt_text}
-    [/prompt]
-    [context]
-    field: {field_name}
-    value:
-    {str(field_value)}
-    [full document]
-    {str(doc)}
-    [/full document]
-    [/context]
-    """,)
-    response = ollama.chat(model=desiredModel, messages=[
-        {
-            'role': 'user',
-            'content': f"""
-[prompt]
-{prompt_text}
-[/prompt]
-[context]
-field: {field_name}
-value:
-{str(field_value)}
-[full document]
-{str(doc)}
-[/full document]
-[/context]
-""",
-        },
-    ])
-    return response['message']['content']
+# Add the custom operator
+mongo_db.add_custom_operator('$prompt', prompt_operator)
 ```
 
-This operator takes a field from the document and a prompt text, then generates a response using the language model.
+The `prompt_operator` function is responsible for:
+
+- Extracting the specified field from each document.
+- Constructing a prompt using the provided prompt text.
+- Interacting with the language model to generate a response.
+- Returning the response to be included in the aggregation result.
 
 ### Constructing the Aggregation Pipeline
 
 We build an aggregation pipeline that utilizes the custom `$prompt` operator:
 
 ```python
+# Define the aggregation pipeline using the custom operator
 pipeline = [
     {
         '$match': {
@@ -187,10 +227,16 @@ pipeline = [
             'rating': 1,
             'comment': 1,
             'summary': {
-                '$prompt': ['comment', 'Summarize the following movie comment in 5 words:']
+                '$prompt': [
+                    'comment',
+                    'Summarize the following movie comment in 5 words:'
+                ]
             },
             'sentiment': {
-                '$prompt': ['comment', 'Respond with the sentiment for the following comment in exactly 1 word: "positive", "neutral", or "negative":']
+                '$prompt': [
+                    'comment',
+                    'Respond with the sentiment for the following comment in exactly 1 word: "positive", "neutral", or "negative":'
+                ]
             }
         }
     },
@@ -205,6 +251,35 @@ pipeline = [
 - **`$match` Stage**: Filters active documents with a rating greater than 3.
 - **`$project` Stage**: Projects desired fields and uses `$prompt` to generate summaries and sentiments.
 - **`$sort` Stage**: Sorts the results by rating in descending order.
+
+### Executing the Pipeline
+
+We execute the pipeline and handle any potential exceptions:
+
+```python
+# Apply the custom operator
+try:
+    output = mongo_db.aggregate(pipeline)
+except Exception as e:
+    logging.error(f"Aggregation failed: {e}")
+    output = []
+
+# Print the results
+for doc in output:
+    print(f"\nDocument ID {doc.get('_id')}:")
+    print(f"User: {doc.get('user')}")
+    print(f"Movie: {doc.get('movie')}")
+    print(f"Rating: {doc.get('rating')}")
+    print(f"Comment: {doc.get('comment')}")
+    print(f"Summary: {doc.get('summary')}")
+    print(f"Sentiment: {doc.get('sentiment')}")
+```
+
+This code:
+
+- Executes the aggregation pipeline.
+- Catches and logs any exceptions that occur.
+- Iterates over the results and prints out each document's details, including the generated summary and sentiment.
 
 ---
 
@@ -439,393 +514,77 @@ Incorporating security best practices is essential when integrating custom opera
 
 ---
 
-## FULL CODE
+## OUTPUT
 
-```python
-from pymongo import MongoClient
-import ollama
-import uuid
+```
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
 
-desiredModel = 'llama3.2:3b'
-
-DATASET = [
-    {
-        "_id": 1,
-        "user": "Alice",
-        "movie": "Inception",
-        "rating": 5,
-        "comment": "This movie is absolutely amazing! The plot twists and turns in ways you would never expect. Truly a masterpiece.",
-        "status": "active"
-    },
-    {
-        "_id": 2,
-        "user": "Bob",
-        "movie": "The Matrix",
-        "rating": 4,
-        "comment": "The Matrix offers great visuals. The special effects are truly groundbreaking, making it a visual feast.",
-        "status": "active"
-    },
-    {
-        "_id": 3,
-        "user": "Charlie",
-        "movie": "Interstellar",
-        "rating": 5,
-        "comment": "Interstellar is a mind-blowing experience! The scientific concepts are intriguing and the storyline is deeply moving.",
-        "status": "inactive"
-    },
-    {
-        "_id": 4,
-        "user": "Diana",
-        "movie": "Inception",
-        "rating": 4,
-        "comment": "Inception is a good movie, but it can be quite confusing. The plot is complex and requires your full attention.",
-        "status": "active"
-    },
-    {
-        "_id": 5,
-        "user": "Eve",
-        "movie": "The Matrix Reloaded",
-        "rating": 2,
-        "comment": "The Matrix Reloaded didn't quite live up to the first one. It lacked the originality and depth of its predecessor.",
-        "status": "inactive"
-    },
-    {
-        "_id": 6,
-        "user": "Frank",
-        "movie": "Inception",
-        "rating": 5,
-        "comment": "Inception is a true masterpiece of modern cinema. The storytelling is innovative and the cinematography is stunning.",
-        "status": "active"
-    },
-    {
-        "_id": 7,
-        "user": "Grace",
-        "movie": "Inception",
-        "rating": 4,
-        "comment": "Inception boasts an intricate plot and stunning visual effects. It's a cinematic journey like no other.",
-        "status": "active"
-    },
-    {
-        "_id": 8,
-        "user": "Heidi",
-        "movie": "The Godfather",
-        "rating": 5,
-        "comment": "The Godfather is an all-time classic. The storytelling is compelling and the characters are unforgettable.",
-        "status": "active"
-    },
-    {
-        "_id": 9,
-        "user": "Ivan",
-        "movie": "Inception",
-        "rating": 4,
-        "comment": "Inception is a thrilling ride. It keeps you on the edge of your seat from start to finish.",
-        "status": "active"
-    },
-    {
-        "_id": 10,
-        "user": "Judy",
-        "movie": "Inception",
-        "rating": 3,
-        "comment": "Inception offers exceptional storytelling and visuals, but the plot can be a bit hard to follow at times.",
-        "status": "active"
-    },
-]
-
-class CustomMongoDB:
-    def __init__(self, uri, database, collection, temp_prefix='temp'):
-        self.client = MongoClient(uri)
-        self.db = self.client[database]
-        self.collection = self.db[collection]
-        self.collection.delete_many({})
-        self.collection.insert_many(DATASET)
-        self.custom_operators = {}
-        self.temp_prefix = temp_prefix
-
-    def add_custom_operator(self, name, func):
-        """Add a custom operator to the collection."""
-        self.custom_operators[name] = func
-
-    def remove_custom_operator(self, name):
-        """Remove a custom operator from the collection."""
-        if name in self.custom_operators:
-            del self.custom_operators[name]
-
-    def contains_custom_operator(self, stage):
-        """Check if a pipeline stage contains any custom operators."""
-        def check_expr(expr):
-            if isinstance(expr, dict):
-                for key, value in expr.items():
-                    if key in self.custom_operators:
-                        return True
-                    elif isinstance(value, (dict, list)):
-                        if check_expr(value):
-                            return True
-            elif isinstance(expr, list):
-                for item in expr:
-                    if check_expr(item):
-                        return True
-            return False
-        return check_expr(stage)
-
-    def aggregate(self, pipeline):
-        """Execute an aggregation pipeline with custom operators processed where needed."""
-        current_collection = self.collection
-        temp_collections = []
-
-        pipeline_iter = iter(pipeline)
-        sub_pipeline = []
-        for stage in pipeline_iter:
-            if not self.contains_custom_operator(stage):
-                sub_pipeline.append(stage)
-            else:
-                # Execute the accumulated sub_pipeline in MongoDB
-                if sub_pipeline:
-                    current_collection = self.execute_sub_pipeline(current_collection, sub_pipeline)
-                    sub_pipeline = []
-                    temp_collections.append(current_collection)
-
-                # Process the custom stage
-                # Fetch the documents
-                documents = list(current_collection.find())
-
-                # Process the custom stage per document
-                documents = self.process_custom_stage(documents, stage)
-
-                # Write the documents to a new temporary collection
-                temp_collection_name = f"{self.temp_prefix}_{uuid.uuid4().hex}"
-                temp_collection = self.db[temp_collection_name]
-                temp_collection.insert_many(documents)
-                current_collection = temp_collection
-                temp_collections.append(current_collection)
-
-        # After processing all stages, if sub_pipeline is not empty, execute it
-        if sub_pipeline:
-            current_collection = self.execute_sub_pipeline(current_collection, sub_pipeline)
-            temp_collections.append(current_collection)
-
-        # Fetch the final results
-        results = list(current_collection.find())
-
-        # Clean up temporary collections
-        for temp_col in temp_collections:
-            if temp_col != self.collection:
-                temp_col.drop()
-
-        return results
-
-    def execute_sub_pipeline(self, collection, pipeline):
-        """Execute a sub-pipeline on the given collection."""
-        temp_collection_name = f"temp_{uuid.uuid4().hex}"
-        temp_collection = self.db[temp_collection_name]
-        pipeline_with_out = pipeline + [{'$out': temp_collection_name}]
-        collection.aggregate(pipeline_with_out)
-        return temp_collection
-
-    def process_custom_stage(self, documents, stage):
-        """Process a custom stage per document."""
-        # We assume the stage is a dict with a single key
-        operator, expr = next(iter(stage.items()))
-        if operator == '$project':
-            processed_docs = []
-            for doc in documents:
-                new_doc = {'_id': doc['_id']}
-                for key, value in expr.items():
-                    if isinstance(value, int) and value == 1:
-                        new_doc[key] = doc.get(key)
-                    else:
-                        new_doc[key] = self.process_expr(value, doc)
-                processed_docs.append(new_doc)
-            return processed_docs
-        else:
-            raise NotImplementedError(f"Custom processing for operator {operator} is not implemented.")
-
-    def process_expr(self, expr, doc):
-        """Recursively process an expression within a document context."""
-        if isinstance(expr, dict):
-            if len(expr) == 1:
-                key, value = next(iter(expr.items()))
-                if key in self.custom_operators:
-                    return self.custom_operators[key](doc, value)
-                elif key.startswith('$'):
-                    return self.evaluate_operator(key, value, doc)
-                else:
-                    return {key: self.process_expr(value, doc)}
-            else:
-                return {k: self.process_expr(v, doc) for k, v in expr.items()}
-        elif isinstance(expr, list):
-            return [self.process_expr(item, doc) for item in expr]
-        elif isinstance(expr, str) and expr.startswith('$'):
-            return self.get_field_value(doc, expr[1:])
-        else:
-            return expr
-
-    def evaluate_operator(self, operator, value, doc):
-        """Evaluate standard MongoDB operators."""
-        if operator == '$concat':
-            parts = self.process_expr(value, doc)
-            return ''.join(str(part) for part in parts)
-        elif operator == '$strLenCP':
-            string = self.process_expr(value, doc)
-            return len(string)
-        else:
-            raise NotImplementedError(f"Operator {operator} not implemented.")
-
-    def get_field_value(self, doc, field_path):
-        """Retrieve the value of a field from the document given a field path."""
-        fields = field_path.split('.')
-        value = doc
-        for f in fields:
-            if isinstance(value, dict) and f in value:
-                value = value[f]
-            else:
-                return None
-        return value
-
-# Custom operator function
-def prompt_operator(doc, args):
-    field = args[0]
-    prompt_text = args[1]
-    # Get the value from the document
-    field_name = field  # Field name without '$'
-    field_value = doc.get(field_name)
-    if field_value is None:
-        return None
-    # Call the LLM with the field value and prompt text
-    print(f"""
-    [prompt]
-    {prompt_text}
-    [/prompt]
-    [context]
-    field: {field_name}
-    value:
-    {str(field_value)}
-    [full document]
-    {str(doc)}
-    [/full document]
-    [/context]
-    """,)
-    response = ollama.chat(model=desiredModel, messages=[
-        {
-            'role': 'user',
-            'content': f"""
-[prompt]
-{prompt_text}
-[/prompt]
-[context]
-field: {field_name}
-value:
-{str(field_value)}
-[full document]
-{str(doc)}
-[/full document]
-[/context]
-""",
-        },
-    ])
-    return response['message']['content']
-
-if __name__ == "__main__":
-    # Initialize the CustomMongoDB class
-    mongo_db = CustomMongoDB("mongodb://localhost:27017/?directConnection=true", "mydatabase", "mycollection")
-
-    # Add the custom operator
-    mongo_db.add_custom_operator('$prompt', prompt_operator)
-
-    # Define the aggregation pipeline using the custom operator anywhere
-    pipeline = [
-        {
-            '$match': {
-                'rating': {'$gt': 3},
-                'status': 'active'
-            }
-        },
-        {
-            '$project': {
-                'user': 1,
-                'movie': 1,
-                'rating': 1,
-                'comment': 1,
-                'summary': {
-                    '$prompt': ['comment', 'Summarize the following movie comment in 5 words:']
-                },
-                'sentiment': {
-                    '$prompt': ['comment', 'Respond with the sentiment for the following comment in exactly 1 word:`"positive"` or `"neutral"` or `"negative"`:']
-                }
-            }
-        },
-        {
-            '$sort': {'rating': -1}
-        }
-    ]
-
-    # Apply the custom operator
-    output = mongo_db.aggregate(pipeline)
-
-    # Print the results
-    for doc in output:
-        print(f"\nDocument ID {doc.get('_id')}:")
-        print(f"User: {doc.get('user')}")
-        print(f"Movie: {doc.get('movie')}")
-        print(f"Rating: {doc.get('rating')}")
-        print(f"Comment: {doc.get('comment')}")
-        print(f"Summary: {doc.get('summary')}")
-        print(f"Sentiment: {doc.get('sentiment')}")
-
-"""
-Document ID 1:
+Document ID 672391900dd624aa7e7e797b:
 User: Alice
 Movie: Inception
 Rating: 5
 Comment: This movie is absolutely amazing! The plot twists and turns in ways you would never expect. Truly a masterpiece.
-Summary: "Inception is an amazing masterpiece."
+Summary: Movie reviewer praises its masterpieces.
 Sentiment: positive
 
-Document ID 6:
+Document ID 672391900dd624aa7e7e797e:
 User: Frank
 Movie: Inception
 Rating: 5
 Comment: Inception is a true masterpiece of modern cinema. The storytelling is innovative and the cinematography is stunning.
-Summary: Praises Inception as a masterpiece.
+Summary: "Inception is a cinematic masterpiece."
 Sentiment: positive
 
-Document ID 8:
+Document ID 672391900dd624aa7e7e7980:
 User: Heidi
 Movie: The Godfather
 Rating: 5
 Comment: The Godfather is an all-time classic. The storytelling is compelling and the characters are unforgettable.
-Summary: Classic film with memorable characters.
+Summary: Classic movie with great storytelling.
 Sentiment: positive
 
-Document ID 2:
+Document ID 672391900dd624aa7e7e797c:
 User: Bob
 Movie: The Matrix
 Rating: 4
 Comment: The Matrix offers great visuals. The special effects are truly groundbreaking, making it a visual feast.
-Summary: Visually stunning sci-fi movie experience.
+Summary: Visuals and effects in Matrix.
 Sentiment: positive
 
-Document ID 4:
+Document ID 672391900dd624aa7e7e797d:
 User: Diana
 Movie: Inception
 Rating: 4
 Comment: Inception is a good movie, but it can be quite confusing. The plot is complex and requires your full attention.
-Summary: Confusing but good mental puzzle film.
-Sentiment: neutral
+Summary: Inception is confusing but worth watching.
+Sentiment: positive
 
-Document ID 7:
+Document ID 672391900dd624aa7e7e797f:
 User: Grace
 Movie: Inception
 Rating: 4
 Comment: Inception boasts an intricate plot and stunning visual effects. It's a cinematic journey like no other.
-Summary: "Intricate plot with impressive visuals."
+Summary: "Inception has great visual effects."
 Sentiment: positive
 
-Document ID 9:
+Document ID 672391900dd624aa7e7e7981:
 User: Ivan
 Movie: Inception
 Rating: 4
 Comment: Inception is a thrilling ride. It keeps you on the edge of your seat from start to finish.
-Summary: Thrilling and suspenseful action film.
+Summary: Highly engaging action movie experience.
 Sentiment: positive
-"""
 ```
